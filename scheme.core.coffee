@@ -41,6 +41,10 @@ class ArgumentError extends SchemeError
     constructor:(subject, length) ->
         super "#{subject} requires #{length} arguments."
 
+class ArgumentInvaildError extends SchemeError
+    constructor:(subject, obj) ->
+        super "#{subject} invalid arguments : #{obj}"
+
 class Tokenizer
     constructor: (@code) ->
         @point = 0
@@ -68,7 +72,6 @@ class Tokenizer
                     if token.length > 0
                         esc = true
                         break
-
                     i++
                     if inQuote
                         token += c
@@ -165,6 +168,84 @@ class Symbols
             ret += (i+"")
         ret
 
+    @::register "=", () ->
+        unless arguments.length == 2
+            throw new ArgumentError '=', 2
+        if arguments[0] == arguments[1] then Token.true else Token.false
+
+    @::register ">", () ->
+        unless arguments.length == 2
+            throw new ArgumentError '>', 2
+        if arguments[0] > arguments[1] then Token.true else Token.false
+        
+    @::register ">=", () ->
+        unless arguments.length == 2
+            throw new ArgumentError '>=', 2
+        if arguments[0] >= arguments[1] then Token.true else Token.false
+
+    @::register "<", () ->
+        unless arguments.length == 2
+            throw new ArgumentError '<', 2
+        if arguments[0] < arguments[1] then Token.true else Token.false
+        
+    @::register "<=", () ->
+        unless arguments.length == 2
+            throw new ArgumentError '<=', 2
+        if arguments[0] <= arguments[1] then Token.true else Token.false
+
+    @::register "car", (list) ->
+        unless arguments.length == 1
+            throw new ArgumentError 'car', 1
+        return Token.nil if Token.isNil list
+        throw new ArgumentInvaildError "car", list unless list instanceof Array
+
+        return list[0]
+
+    @::register "cdr", (list) ->
+        unless arguments.length == 1
+            throw new ArgumentError 'cdr', 1
+        return Token.nil if Token.isNil list
+        throw new ArgumentInvaildError "cdr", list unless list instanceof Array
+
+        return list[1..]
+
+    @::register "atom", (value) ->
+        unless arguments.length == 1
+            throw new ArgumentError 'atom', 1
+
+        return if value instanceof Array then Token.nil else Token.true
+
+    @::register "cons", (v1, v2) ->
+        unless arguments.length == 2
+            throw new ArgumentError 'cons', 2
+
+        ret = []
+        ret.push v1
+        return ret if Token.isNil v2
+
+        if Symbols.find('atom')(v2) is Token.true
+            ret.push v2
+        else
+            v2.map (e) -> ret.push e
+        ret
+
+    @::register "eq", (v1, v2) ->
+        unless arguments.length == 2
+            throw new ArgumentError 'eq', 2
+        return if v1 == v2 then Token.true else Token.false
+
+    @::register "print", () ->
+        ret = ""
+        for i in arguments
+            ret += i
+        console.log ret
+        ret
+
+    @::register "eval", () ->
+        if arguments.length >= 1
+            throw new ArgumentError 'eval', 1
+        arguments[0]
+
 class Special
     constructor:(@scheme) ->
 
@@ -226,16 +307,18 @@ class Special
 class Token
     @lambda = "lambda"
     @nil = "nil"
+    @true = "#t"
+    @false = "#f"
 
     # decide the kind of token
     @isNil: (value) ->
-        value == null or value == undefined or value == 'nil' or ( value instanceof Array && value.length == 0)
+        value == null or value == undefined or value == Token.nil or value == Token.false or ( value instanceof Array && value.length == 0)
 
     @isString: (value) ->
         if typeof value == 'string' and value[0] == "\"" and value[value.length-1] == "\"" then true else false
 
     @isValue: (value) ->
-        if value == "#t" or value == "nil" or Token.isNil value
+        if value == Token.true or Token.isNil value
             return true
         if Token.isString value
             return true
@@ -344,6 +427,15 @@ code = """
         (cons (func (car ls)) (my-map func (cdr ls)))))
 """
 code = """
-(+ (+ 1 1 2) 3)
+(* (+ 1 1 2) 3)
 """
-scheme.interpret code
+console.log code
+console.log scheme.interpret code
+
+code = "(>= (+ 1 1) 1)"
+console.log code
+console.log scheme.interpret code
+
+code = "(< 3 1)"
+console.log code
+console.log scheme.interpret code

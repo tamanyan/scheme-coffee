@@ -1,4 +1,4 @@
-var ArgumentError, ArgumentInvaildError, ArgumentNaNError, DEBUG, Log, Scheme, SchemeError, Special, SymbolNotFoundError, Symbols, Token, Tokenizer, code, debug, scheme;
+var ArgumentError, ArgumentInvaildError, ArgumentNaNError, DEBUG, Log, Scheme, SchemeError, Special, SymbolNotFoundError, Symbols, Token, Tokenizer, TypeError, code, debug, scheme;
 var __hasProp = Object.prototype.hasOwnProperty, __extends = function(child, parent) {
   for (var key in parent) { if (__hasProp.call(parent, key)) child[key] = parent[key]; }
   function ctor() { this.constructor = child; }
@@ -6,11 +6,6 @@ var __hasProp = Object.prototype.hasOwnProperty, __extends = function(child, par
   child.prototype = new ctor;
   child.__super__ = parent.prototype;
   return child;
-}, __indexOf = Array.prototype.indexOf || function(item) {
-  for (var i = 0, l = this.length; i < l; i++) {
-    if (this[i] === item) return i;
-  }
-  return -1;
 }, __bind = function(fn, me){ return function(){ return fn.apply(me, arguments); }; };
 Log = (function() {
   function Log() {}
@@ -82,6 +77,13 @@ ArgumentInvaildError = (function() {
     ArgumentInvaildError.__super__.constructor.call(this, "" + subject + " invalid arguments : " + obj);
   }
   return ArgumentInvaildError;
+})();
+TypeError = (function() {
+  __extends(TypeError, SchemeError);
+  function TypeError(subject, type) {
+    TypeError.__super__.constructor.call(this, "the type of " + subject + " is not " + type);
+  }
+  return TypeError;
 })();
 Tokenizer = (function() {
   function Tokenizer(code) {
@@ -246,8 +248,15 @@ Symbols = (function() {
     return ret;
   });
   Symbols.prototype.register("=", function() {
+    var v, _i, _len;
     if (arguments.length !== 2) {
       throw new ArgumentError('=', 2);
+    }
+    for (_i = 0, _len = arguments.length; _i < _len; _i++) {
+      v = arguments[_i];
+      if (typeof v === "number") {
+        throw new TypeError(v, "number");
+      }
     }
     if (arguments[0] === arguments[1]) {
       return Token["true"];
@@ -352,6 +361,8 @@ Symbols = (function() {
     if (arguments.length !== 2) {
       throw new ArgumentError('eq', 2);
     }
+    v1 = v1 + "";
+    v2 = v2 + "";
     if (v1 === v2) {
       return Token["true"];
     } else {
@@ -381,7 +392,7 @@ Special = (function() {
     this.scheme = scheme;
   }
   Special.prototype.execute = function(tree, symbols) {
-    return scheme.execute(tree(symbols));
+    return this.scheme.execute(tree, symbols);
   };
   Special.prototype.quote = function(tree, symbols) {
     if (Token.isNil(tree[1])) {
@@ -391,20 +402,19 @@ Special = (function() {
     }
   };
   Special.prototype["if"] = function(tree, symbols) {
-    var ret, val;
+    var ret;
     ret = this.execute(tree[1], symbols);
-    val = tree.value();
-    return this.execute(val[Token.isNil(ret) ? 3 : 2], symbols);
+    return this.execute(tree[Token.isNil(ret) ? 3 : 2], symbols);
   };
   Special.prototype.define = function(tree, symbols) {
     var def, lambda, name;
     def = tree.slice(1);
     if (def[0] instanceof Array) {
-      name = def[0][0].value();
+      name = def[0][0];
       lambda = [def[0].slice(1), def[1]];
       Symbols.register(name, lambda);
     } else {
-      name = def[0].value();
+      name = def[0];
       Symbols.register(name, this.execute(def[1]));
     }
     debug("register symbol : " + name);
@@ -510,11 +520,14 @@ Token = (function() {
     return value instanceof Array;
   };
   Token.isSpecial = function(value) {
-    var _ref;
     if (!Token.isList(value) || (function() {}).hasOwnProperty(value[0])) {
       return false;
     }
-    return _ref = value[0], __indexOf.call(Special.prototype, _ref) >= 0;
+    if (Special.prototype[value[0]]) {
+      return true;
+    } else {
+      return false;
+    }
   };
   Token.isBuiltinFunc = function(tree, symbols, scheme) {
     var func;
@@ -523,6 +536,14 @@ Token = (function() {
     }
     func = scheme.execute(tree[0], symbols);
     return typeof func === 'function';
+  };
+  Token.isUserDefinedFunc = function(tree, symbols, scheme) {
+    var func;
+    if (!Token.isList(tree)) {
+      return false;
+    }
+    func = scheme.execute(tree[0], symbols);
+    return Token.isLambda(func);
   };
   return Token;
 })();
@@ -556,17 +577,40 @@ Scheme = (function() {
           tokenizer.next();
         }
       }
-    } else if (tokenizer.value() === ")") {
+    } else if (tokenizer.value() === "\'") {
       tokenizer.next();
-      ret = ["quote", parse(tokenizer)];
+      ret = ["quote", this._parse(tokenizer)];
     } else {
       ret = tokenizer.value();
       tokenizer.next();
     }
     return ret;
   };
+  Scheme.prototype._bindArguments = function(params, tree, symbols) {
+    var ends, i, newSym, ret, t, v, _i, _len, _len2;
+    newSym = new Symbols;
+    newSym.prototype = symbols;
+    for (i = 0, _len = params.length; i < _len; i++) {
+      v = params[i];
+      if (v === '.') {
+        ends = [];
+        for (_i = 0, _len2 = tree.length; _i < _len2; _i++) {
+          t = tree[_i];
+          ret = this.execute(t, symbols);
+          ret = Token.isNil(ret) ? Token.nil : ret;
+          ends.push(ret);
+        }
+        newSym.register(params[param.length - 1], ends);
+        break;
+      }
+      ret = this.execute(tree[i + 1], symbols);
+      ret = Token.isNil(ret) ? Token.nil : ret;
+      newSym.register(params[i], ret);
+    }
+    return newSym;
+  };
   Scheme.prototype.execute = function(tree, symbols) {
-    var args, lambda;
+    var args, lambda, newSym;
     if (symbols == null) {
       symbols = new Symbols;
     }
@@ -588,7 +632,8 @@ Scheme = (function() {
       return symbols.find(tree);
     }
     if (Token.isSpecial(tree)) {
-      return this.special.prototype[tree[0]](tree, symbols);
+      return this.special[tree[0]].call(this.special, tree, symbols);
+      return func(tree, symbols);
     }
     if (Token.isBuiltinFunc(tree, symbols, this)) {
       lambda = this.execute(tree[0], symbols);
@@ -597,18 +642,19 @@ Scheme = (function() {
       }, this));
       return lambda.apply(symbols, args);
     }
+    if (Token.isUserDefinedFunc(tree, symbols, this)) {
+      lambda = this.execute(tree[0], symbols);
+      newSym = this._bindArguments(lambda[0], tree, symbols);
+      return this.execute(lambda[1], newSym);
+    }
     throw "unknown object : " + tree;
   };
   return Scheme;
 })();
 scheme = new Scheme;
-code = "(define (my-map func ls)\n    (if (null? ls)\n        '()\n        (cons (func (car ls)) (my-map func (cdr ls)))))";
-code = "(* (+ 1 1 2) 3)";
+code = "(define (fact x)\n    (if (eq x 1)\n        1\n        (* x (fact (- x 1)))))";
 console.log(code);
 console.log(scheme.interpret(code));
-code = "(>= (+ 1 1) 1)";
-console.log(code);
-console.log(scheme.interpret(code));
-code = "(< 3 1)";
+code = "(if #t \n    (+ 1 1) \n    (- 1 1)\n)";
 console.log(code);
 console.log(scheme.interpret(code));

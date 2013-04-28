@@ -45,6 +45,10 @@ class ArgumentInvaildError extends SchemeError
     constructor:(subject, obj) ->
         super "#{subject} invalid arguments : #{obj}"
 
+class TypeError extends SchemeError
+    constructor:(subject, type) ->
+        super "the type of #{subject} is not #{type}"
+
 class Tokenizer
     constructor: (@code) ->
         @point = 0
@@ -171,6 +175,9 @@ class Symbols
     @::register "=", () ->
         unless arguments.length == 2
             throw new ArgumentError '=', 2
+        for v in arguments
+            if typeof v == "number"
+                throw new TypeError v,"number"
         if arguments[0] == arguments[1] then Token.true else Token.false
 
     @::register ">", () ->
@@ -232,6 +239,8 @@ class Symbols
     @::register "eq", (v1, v2) ->
         unless arguments.length == 2
             throw new ArgumentError 'eq', 2
+        v1 = v1+""
+        v2 = v2+""
         return if v1 == v2 then Token.true else Token.false
 
     @::register "print", () ->
@@ -250,22 +259,21 @@ class Special
     constructor:(@scheme) ->
 
     execute: (tree, symbols) ->
-        scheme.execute tree symbols
+        @scheme.execute tree, symbols
 
     quote: (tree, symbols) ->
         if Token.isNil tree[1] then Token.nil else tree[1]
     if: (tree, symbols) ->
         ret = @execute tree[1], symbols
-        val = tree.value()
-        @execute( val[if Token.isNil ret then 3 else 2], symbols )
+        @execute( tree[if Token.isNil ret then 3 else 2], symbols )
     define: (tree, symbols) ->
         def = tree[1..]
         if def[0] instanceof Array
-            name = def[0][0].value()
+            name = def[0][0]
             lambda = [ def[0][1..], def[1] ]
             Symbols.register name, lambda
         else
-            name = def[0].value()
+            name = def[0]
             Symbols.register name, @execute def[1]
         debug "register symbol : "+name
         return name
@@ -345,7 +353,10 @@ class Token
         if !Token.isList(value) or (()->).hasOwnProperty value[0]
             return false
 
-        return value[0] in Special.prototype
+        if Special.prototype[value[0]]
+            return true
+        else
+            return false
 
     @isBuiltinFunc: (tree, symbols, scheme) ->
         unless Token.isList tree
@@ -354,6 +365,12 @@ class Token
         func = scheme.execute tree[0], symbols
         typeof func  == 'function'
 
+    @isUserDefinedFunc: (tree, symbols, scheme) ->
+        unless Token.isList tree
+            return false
+
+        func = scheme.execute tree[0], symbols
+        Token.isLambda func
 
 class Scheme
     constructor: () ->
@@ -381,14 +398,31 @@ class Scheme
                     ret[ret.length] = @_parse tokenizer
 
                 tokenizer.next() if tokenizer.value() == ")"
-        else if tokenizer.value() == ")"
+        else if tokenizer.value() == "\'"
             tokenizer.next()
-            ret = ["quote", parse tokenizer]
+            ret = ["quote", @_parse tokenizer]
         else
             ret = tokenizer.value()
             tokenizer.next()
 
         return ret
+
+    _bindArguments: (params, tree, symbols) ->
+        newSym = new Symbols
+        newSym.prototype = symbols
+        for v,i in params
+            if v == '.'
+                ends = []
+                for t in tree
+                    ret = @execute t, symbols
+                    ret = if Token.isNil ret then Token.nil else ret
+                    ends.push ret
+                newSym.register params[param.length - 1], ends
+                break
+            ret = @execute tree[i+1], symbols
+            ret = if Token.isNil ret then Token.nil else ret
+            newSym.register params[i], ret
+        newSym
     
     execute: (tree, symbols = new Symbols) ->
         @depth++
@@ -410,32 +444,36 @@ class Scheme
             return symbols.find tree
 
         if Token.isSpecial tree
-            return @special.prototype[tree[0]] tree, symbols
+            return (@special[tree[0]]).call(@special, tree, symbols)
+            return func(tree, symbols)
 
         if Token.isBuiltinFunc tree, symbols, @
             lambda = @execute tree[0], symbols
             args = tree[1..].map (v) => @execute v, symbols
             return lambda.apply symbols, args
+
+        if Token.isUserDefinedFunc tree, symbols, @
+            lambda = @execute tree[0], symbols
+            newSym = @_bindArguments lambda[0], tree, symbols
+            return @execute lambda[1], newSym
+
         throw "unknown object : " + tree
 
 
 scheme = new Scheme
 code = """
-(define (my-map func ls)
-    (if (null? ls)
-        '()
-        (cons (func (car ls)) (my-map func (cdr ls)))))
-"""
-code = """
-(* (+ 1 1 2) 3)
+(define (fact x)
+    (if (eq x 1)
+        1
+        (* x (fact (- x 1)))))
 """
 console.log code
 console.log scheme.interpret code
 
-code = "(>= (+ 1 1) 1)"
-console.log code
-console.log scheme.interpret code
-
-code = "(< 3 1)"
+code = """(if #t 
+            (+ 1 1) 
+            (- 1 1)
+        )
+"""
 console.log code
 console.log scheme.interpret code

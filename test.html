@@ -1,7 +1,45 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+          "http://www.w3.org/TR/html4/strict.dtd">
 <html>
-    <head>
-        <script type="text/javascript" src="scheme.core.js"></script>
-    </head>
-    <body>
-    </body>
+  <head>
+    <title>Scheme Console</title>
+    <meta name="Content-Type" content="text/html; charset=UTF-8">
+    <script type="text/javascript" src="third-party/jquery-1.4.2.min.js"></script>
+    <script type="text/javascript" src="third-party/jquery.console.js"></script>
+    <!-- Everything beyond this point is user-customized -->
+    <script type="text/javascript" src="scheme.core.js"></script>
+    <script type="text/javascript" src="scheme.main.js"></script>
+    <style type="text/css" media="screen">
+      div.console{ word-wrap: break-word; }
+      /* First console */
+      div.console { font-size: 14px }
+      div.console div.jquery-console-inner
+       { width:900px; height:500px; background:#333; padding:10px;
+         overflow:auto }
+      div.console div.jquery-console-prompt-box
+       { color:#fff; font-family:monospace; }
+      div.console div.jquery-console-focus span.jquery-console-cursor
+       { background:#fefefe; color:#333; font-weight:bold }
+      div.console div.jquery-console-message-error
+       { color:#ef0505; font-family:sans-serif; font-weight:bold;
+         padding:0.1em; }
+      div.console div.jquery-console-message-value
+       { color:#1ad027; font-family:monospace;
+         padding:0.1em; }
+      div.console div.jquery-console-message-type
+       { color:#52666f; font-family:monospace;
+         padding:0.1em; }
+      div.console span.jquery-console-prompt-label { font-weight:bold }
+    </style>
+  </head>
+  <body>
+    <noscript>
+      <p>
+        <strong>Please enable JavaScript or upgrade your browser.</strong>
+      </p>
+    </noscript>
+    <h1>Scheme Console</h1>
+    <div class="console">
+    </div>
+  </body>
 </html>

@@ -1,4 +1,4 @@
-var ArgumentError, ArgumentInvaildError, ArgumentNaNError, DEBUG, Log, Scheme, SchemeError, Special, SymbolNotFoundError, Symbols, Token, Tokenizer, TypeError, code, debug, scheme;
+var ArgumentError, ArgumentInvaildError, ArgumentNaNError, DEBUG, LOG, Log, ParserError, Scheme, SchemeError, Special, SymbolNotFoundError, Symbols, Token, Tokenizer, TypeError, debug, log;
 var __hasProp = Object.prototype.hasOwnProperty, __extends = function(child, parent) {
   for (var key in parent) { if (__hasProp.call(parent, key)) child[key] = parent[key]; }
   function ctor() { this.constructor = child; }
@@ -10,9 +10,13 @@ var __hasProp = Object.prototype.hasOwnProperty, __extends = function(child, par
 Log = (function() {
   function Log() {}
   Log.printResult = function(list) {
-    var ret, v, _i, _len, _ref;
+    var ret, v, _i, _len;
     if (Token.isNil(list)) {
-      return 'nil';
+      if (list === Token["false"]) {
+        return list;
+      } else {
+        return Token.nil;
+      }
     }
     if (typeof list === 'function') {
       return "builtin function";
@@ -26,9 +30,7 @@ Log = (function() {
       if (v instanceof Array) {
         ret += " " + Log.printResult(v);
       } else {
-        ret += " " + ((_ref = Token.isNil(v)) != null ? _ref : {
-          'nil': v
-        });
+        ret += " " + v;
       }
     }
     ret += " )";
@@ -36,9 +38,13 @@ Log = (function() {
   };
   return Log;
 })();
-DEBUG = true;
+DEBUG = false;
 debug = function(obj) {
-  return DEBUG && console.log(obj);
+  return DEBUG && console.log("[scheme debug]" + obj);
+};
+LOG = true;
+log = function(obj) {
+  return LOG && console.log("[scheme log]" + obj);
 };
 SchemeError = (function() {
   __extends(SchemeError, Error);
@@ -84,6 +90,13 @@ TypeError = (function() {
     TypeError.__super__.constructor.call(this, "the type of " + subject + " is not " + type);
   }
   return TypeError;
+})();
+ParserError = (function() {
+  __extends(ParserError, SchemeError);
+  function ParserError() {
+    ParserError.__super__.constructor.call(this, "parser error occurred");
+  }
+  return ParserError;
 })();
 Tokenizer = (function() {
   function Tokenizer(code) {
@@ -232,6 +245,39 @@ Symbols = (function() {
     }
     return ret;
   });
+  Symbols.prototype.register("and", function() {
+    var i, ret, _i, _len;
+    ret = false;
+    for (_i = 0, _len = arguments.length; _i < _len; _i++) {
+      i = arguments[_i];
+      if (!Token.isNil(i) && (+i) !== 0) {
+        ret = i;
+      } else {
+        ret = false;
+        break;
+      }
+    }
+    if (ret) {
+      return ret;
+    } else {
+      return Token["false"];
+    }
+  });
+  Symbols.prototype.register("or", function() {
+    var i, ret, _i, _len;
+    ret = false;
+    for (_i = 0, _len = arguments.length; _i < _len; _i++) {
+      i = arguments[_i];
+      if (!Token.isNil(i) && (+i) !== 0) {
+        return i;
+      }
+    }
+    if (ret) {
+      return ret;
+    } else {
+      return Token["false"];
+    }
+  });
   Symbols.prototype.register("%", function() {
     if (arguments.length !== 2) {
       throw new ArgumentError('%', 2);
@@ -254,7 +300,7 @@ Symbols = (function() {
     }
     for (_i = 0, _len = arguments.length; _i < _len; _i++) {
       v = arguments[_i];
-      if (typeof v === "number") {
+      if (!Token.isNumber(v)) {
         throw new TypeError(v, "number");
       }
     }
@@ -265,8 +311,15 @@ Symbols = (function() {
     }
   });
   Symbols.prototype.register(">", function() {
+    var v, _i, _len;
     if (arguments.length !== 2) {
       throw new ArgumentError('>', 2);
+    }
+    for (_i = 0, _len = arguments.length; _i < _len; _i++) {
+      v = arguments[_i];
+      if (!Token.isNumber(v)) {
+        throw new TypeError(v, "number");
+      }
     }
     if (arguments[0] > arguments[1]) {
       return Token["true"];
@@ -275,8 +328,15 @@ Symbols = (function() {
     }
   });
   Symbols.prototype.register(">=", function() {
+    var v, _i, _len;
     if (arguments.length !== 2) {
       throw new ArgumentError('>=', 2);
+    }
+    for (_i = 0, _len = arguments.length; _i < _len; _i++) {
+      v = arguments[_i];
+      if (!Token.isNumber(v)) {
+        throw new TypeError(v, "number");
+      }
     }
     if (arguments[0] >= arguments[1]) {
       return Token["true"];
@@ -285,8 +345,15 @@ Symbols = (function() {
     }
   });
   Symbols.prototype.register("<", function() {
+    var v, _i, _len;
     if (arguments.length !== 2) {
       throw new ArgumentError('<', 2);
+    }
+    for (_i = 0, _len = arguments.length; _i < _len; _i++) {
+      v = arguments[_i];
+      if (!Token.isNumber(v)) {
+        throw new TypeError(v, "number");
+      }
     }
     if (arguments[0] < arguments[1]) {
       return Token["true"];
@@ -295,8 +362,15 @@ Symbols = (function() {
     }
   });
   Symbols.prototype.register("<=", function() {
+    var v, _i, _len;
     if (arguments.length !== 2) {
       throw new ArgumentError('<=', 2);
+    }
+    for (_i = 0, _len = arguments.length; _i < _len; _i++) {
+      v = arguments[_i];
+      if (!Token.isNumber(v)) {
+        throw new TypeError(v, "number");
+      }
     }
     if (arguments[0] <= arguments[1]) {
       return Token["true"];
@@ -388,6 +462,7 @@ Symbols = (function() {
   return Symbols;
 })();
 Special = (function() {
+  Special["else"] = "else";
   function Special(scheme) {
     this.scheme = scheme;
   }
@@ -428,7 +503,11 @@ Special = (function() {
       }
     });
     for (i = 1, _ref = tree.length; 1 <= _ref ? i <= _ref : i >= _ref; 1 <= _ref ? i++ : i--) {
-      ret = this.execute(tree[i][0], symbols);
+      if (tree[i][0] === Special["else"]) {
+        ret = Token["true"];
+      } else {
+        ret = this.execute(tree[i][0], symbols);
+      }
       if (!Token.isNil(ret)) {
         return this.execute(tree[i][1], symbols);
       }
@@ -552,14 +631,15 @@ Scheme = (function() {
     this.special = new Special(this);
   }
   Scheme.prototype.interpret = function(code) {
-    var result, tokenizer, tree;
+    var result, ret, tokenizer, tree;
     this.depth = 0;
     tokenizer = new Tokenizer(code);
     tree = this._parse(tokenizer);
     result = null;
     result = this.execute(tree);
-    console.log(result);
+    ret = "result -> " + Log.printResult(result);
     this.depth = 0;
+    return ret;
   };
   Scheme.prototype._parse = function(tokenizer) {
     var ret;
@@ -575,6 +655,8 @@ Scheme = (function() {
         }
         if (tokenizer.value() === ")") {
           tokenizer.next();
+        } else {
+          throw new ParserError;
         }
       }
     } else if (tokenizer.value() === "\'") {
@@ -620,7 +702,11 @@ Scheme = (function() {
       DEBUG && console.log(printResult(tree));
     }
     if (Token.isNil(tree)) {
-      return Token.nil;
+      if (tree === Token["false"]) {
+        return tree;
+      } else {
+        return Token.nil;
+      }
     }
     if (Token.isString(tree)) {
       return tree.substring(1, tree.length - 1);
@@ -633,7 +719,6 @@ Scheme = (function() {
     }
     if (Token.isSpecial(tree)) {
       return this.special[tree[0]].call(this.special, tree, symbols);
-      return func(tree, symbols);
     }
     if (Token.isBuiltinFunc(tree, symbols, this)) {
       lambda = this.execute(tree[0], symbols);
@@ -651,10 +736,3 @@ Scheme = (function() {
   };
   return Scheme;
 })();
-scheme = new Scheme;
-code = "(define (fact x)\n    (if (eq x 1)\n        1\n        (* x (fact (- x 1)))))";
-console.log(code);
-console.log(scheme.interpret(code));
-code = "(if #t \n    (+ 1 1) \n    (- 1 1)\n)";
-console.log(code);
-console.log(scheme.interpret(code));

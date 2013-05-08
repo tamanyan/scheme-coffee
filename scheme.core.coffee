@@ -1,27 +1,27 @@
 class Log
     @printResult: (list) ->
-        if Token.isNil(list)
-            return 'nil'
 
-        if( typeof(list) == 'function' )
-            return "builtin function"
-
-        if( !(list instanceof Array) )
-            return list
+        if Token.isNil list
+            return if list == Token.false then list else Token.nil
+        return "builtin function" if typeof(list) == 'function'
+        return list if !(list instanceof Array)
 
         ret = "("
         for v in list
             if( v instanceof Array )
                 ret += " "+ Log.printResult v
             else
-                ret += " "+ (Token.isNil(v) ? 'nil' : v)
+                ret += " "+ v
         
         ret += " )"
         return ret
 
-DEBUG = true
+DEBUG = false
 debug = (obj) ->
-    DEBUG && console.log obj
+    DEBUG && console.log "[scheme debug]" + obj
+LOG = true
+log = (obj) ->
+    LOG && console.log "[scheme log]" + obj
 
 class SchemeError extends Error
     constructor: (@message)->
@@ -48,6 +48,10 @@ class ArgumentInvaildError extends SchemeError
 class TypeError extends SchemeError
     constructor:(subject, type) ->
         super "the type of #{subject} is not #{type}"
+
+class ParserError extends SchemeError
+    constructor:() ->
+        super "parser error occurred"
 
 class Tokenizer
     constructor: (@code) ->
@@ -161,6 +165,23 @@ class Symbols
                 throw ArgumentNaNError arguments[i]
         ret
 
+    @::register "and", () ->
+        ret = false
+        for i in arguments
+            if !Token.isNil(i) and (+i) != 0
+                ret = i
+            else
+                ret = false
+                break
+        if ret then ret else Token.false
+ 
+    @::register "or", () ->
+        ret = false
+        for i in arguments
+            if !Token.isNil(i) and (+i) != 0
+                return i
+        if ret then ret else Token.false
+
     @::register "%", () ->
         unless arguments.length == 2
             throw new ArgumentError '%', 2
@@ -176,28 +197,40 @@ class Symbols
         unless arguments.length == 2
             throw new ArgumentError '=', 2
         for v in arguments
-            if typeof v == "number"
+            unless Token.isNumber v
                 throw new TypeError v,"number"
         if arguments[0] == arguments[1] then Token.true else Token.false
 
     @::register ">", () ->
         unless arguments.length == 2
             throw new ArgumentError '>', 2
+        for v in arguments
+            unless Token.isNumber v
+                throw new TypeError v,"number"
         if arguments[0] > arguments[1] then Token.true else Token.false
         
     @::register ">=", () ->
         unless arguments.length == 2
             throw new ArgumentError '>=', 2
+        for v in arguments
+            unless Token.isNumber v
+                throw new TypeError v,"number"
         if arguments[0] >= arguments[1] then Token.true else Token.false
 
     @::register "<", () ->
         unless arguments.length == 2
             throw new ArgumentError '<', 2
+        for v in arguments
+            unless Token.isNumber v
+                throw new TypeError v,"number"
         if arguments[0] < arguments[1] then Token.true else Token.false
         
     @::register "<=", () ->
         unless arguments.length == 2
             throw new ArgumentError '<=', 2
+        for v in arguments
+            unless Token.isNumber v
+                throw new TypeError v,"number"
         if arguments[0] <= arguments[1] then Token.true else Token.false
 
     @::register "car", (list) ->
@@ -256,6 +289,7 @@ class Symbols
         arguments[0]
 
 class Special
+    @else = "else"
     constructor:(@scheme) ->
 
     execute: (tree, symbols) ->
@@ -282,7 +316,10 @@ class Special
             if v.length != 2
                 throw "invalid cond expression"
         for i in [1..tree.length]
-            ret = @execute tree[i][0], symbols
+            if tree[i][0] == Special.else
+                ret = Token.true
+            else
+                ret = @execute tree[i][0], symbols
             unless Token.isNil ret
                 return @execute tree[i][1], symbols
         return Token.nil
@@ -382,9 +419,9 @@ class Scheme
         tree = @_parse tokenizer
         result = null
         result = @execute tree
-        console.log result
+        ret = "result -> " + Log.printResult result
         @depth = 0
-        return
+        return ret
 
     _parse: (tokenizer) ->
         ret = null
@@ -396,8 +433,11 @@ class Scheme
                 ret = []
                 while tokenizer.value() != ""and tokenizer.value() != ")"
                     ret[ret.length] = @_parse tokenizer
+                if tokenizer.value() == ")"
+                    tokenizer.next()
+                else
+                    throw new ParserError
 
-                tokenizer.next() if tokenizer.value() == ")"
         else if tokenizer.value() == "\'"
             tokenizer.next()
             ret = ["quote", @_parse tokenizer]
@@ -432,7 +472,7 @@ class Scheme
             DEBUG && console.log printResult tree
 
         if Token.isNil tree
-            return Token.nil
+            return if tree == Token.false then tree else Token.nil
 
         if Token.isString tree
             return tree.substring 1, tree.length - 1
@@ -445,7 +485,6 @@ class Scheme
 
         if Token.isSpecial tree
             return (@special[tree[0]]).call(@special, tree, symbols)
-            return func(tree, symbols)
 
         if Token.isBuiltinFunc tree, symbols, @
             lambda = @execute tree[0], symbols
@@ -460,20 +499,3 @@ class Scheme
         throw "unknown object : " + tree
 
 
-scheme = new Scheme
-code = """
-(define (fact x)
-    (if (eq x 1)
-        1
-        (* x (fact (- x 1)))))
-"""
-console.log code
-console.log scheme.interpret code
-
-code = """(if #t 
-            (+ 1 1) 
-            (- 1 1)
-        )
-"""
-console.log code
-console.log scheme.interpret code
